@@ -46,6 +46,7 @@ jitter_buffer_destroy(h);
 | `frame_interval` | 输出间隔（ms） |
 | `high_water` | 达到此帧数开始播放 |
 | `low_water` | 低于此帧数进入欠载 |
+| `output_silence_on_empty` | true: 无数据时输出静音包；false: 无数据时不调用 on_output_data |
 | `with_header` | true: 变长帧，存储为 [2 字节大端长度][payload] |
 
 ## 示例

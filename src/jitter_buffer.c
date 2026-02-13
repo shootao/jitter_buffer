@@ -161,7 +161,7 @@ static esp_err_t s_jitter_buffer_process(jitter_buffer_t *jitter_buffer)
     int read_len = s_jitter_buffer_read(jitter_buffer, jitter_buffer->frame_buffer, jitter_buffer->config.frame_size);
     if (read_len > 0) {
         jitter_buffer->config.on_output_data(jitter_buffer->frame_buffer, read_len);
-    } else if (read_len == 0) {
+    } else if (read_len == 0 && jitter_buffer->config.output_silence_on_empty) {
         memset(jitter_buffer->frame_buffer, 0, jitter_buffer->config.frame_size);
         jitter_buffer->config.on_output_data(jitter_buffer->frame_buffer, jitter_buffer->config.frame_size);
     }

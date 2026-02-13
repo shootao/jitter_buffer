@@ -1,4 +1,4 @@
-version: "0.5.0"
+version: "0.5.1"
 description: Jitter Buffer is a component for jitter buffer
 url: https://github.com/shootao/jitter_buffer
 issues: https://github.com/shootao/jitter_buffer/issues
