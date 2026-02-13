@@ -59,6 +59,42 @@ typedef struct {
     bool                    running;
 } jitter_buffer_t;
 
+typedef struct {
+    const uint8_t *data;
+    size_t len;
+} opus_silence_t;
+
+static const uint8_t opus_silence_20ms[] = {
+    0xF8, 0xFF, 0xFE
+};
+
+static const uint8_t opus_silence_40ms[] = {
+    0xF8, 0xFF, 0xFE,
+    0xF8, 0xFF, 0xFE
+};
+
+static const uint8_t opus_silence_60ms[] = {
+    0xF8, 0xFF, 0xFE,
+    0xF8, 0xFF, 0xFE,
+    0xF8, 0xFF, 0xFE
+};
+
+static const uint8_t opus_silence_120ms[] = {
+    0xF8, 0xFF, 0xFE,
+    0xF8, 0xFF, 0xFE,
+    0xF8, 0xFF, 0xFE,
+    0xF8, 0xFF, 0xFE,
+    0xF8, 0xFF, 0xFE,
+    0xF8, 0xFF, 0xFE
+};
+
+static const opus_silence_t opus_silence[] = {
+    { .data = opus_silence_20ms, .len = sizeof(opus_silence_20ms) },
+    { .data = opus_silence_40ms, .len = sizeof(opus_silence_40ms) },
+    { .data = opus_silence_60ms, .len = sizeof(opus_silence_60ms) },
+    { .data = opus_silence_120ms, .len = sizeof(opus_silence_120ms) },
+};
+
 static int s_jitter_buffer_read(jitter_buffer_t *jitter_buffer, uint8_t *data, size_t len);
 
 /** 状态切换时向 config.event_loop 发送事件（若已配置） */
@@ -162,8 +198,15 @@ static esp_err_t s_jitter_buffer_process(jitter_buffer_t *jitter_buffer)
     if (read_len > 0) {
         jitter_buffer->config.on_output_data(jitter_buffer->frame_buffer, read_len);
     } else if (read_len == 0 && jitter_buffer->config.output_silence_on_empty) {
-        memset(jitter_buffer->frame_buffer, 0, jitter_buffer->config.frame_size);
-        jitter_buffer->config.on_output_data(jitter_buffer->frame_buffer, jitter_buffer->config.frame_size);
+        if (jitter_buffer->config.audio_format_id == AUDIO_FORMAT_ID_OPUS) {
+            int index = jitter_buffer->config.frame_interval / 20;
+            int output_len = opus_silence[index].len;
+            memcpy(jitter_buffer->frame_buffer, opus_silence[index].data, output_len);
+            jitter_buffer->config.on_output_data(jitter_buffer->frame_buffer, output_len);
+        } else {
+            memset(jitter_buffer->frame_buffer, 0, jitter_buffer->config.frame_size);
+            jitter_buffer->config.on_output_data(jitter_buffer->frame_buffer, jitter_buffer->config.frame_size);
+        }
     }
     return ESP_OK;
 }
@@ -308,6 +351,13 @@ jitter_buffer_handle_t jitter_buffer_create(const jitter_buffer_config_t *config
         ESP_LOGE(TAG, "Jitter buffer create: frame_interval <= 0");
         return NULL;
     }
+    if (config->audio_format_id == AUDIO_FORMAT_ID_OPUS && config->output_silence_on_empty) {
+        if (config->frame_interval != 20 && config->frame_interval != 40 && config->frame_interval != 60 && config->frame_interval != 120) {
+            ESP_LOGE(TAG, "Jitter buffer create: frame_interval is not supported for OPUS format");
+            return NULL;
+        }
+    }
+
     jitter_buffer_t *jitter_buffer = (jitter_buffer_t *)malloc(sizeof(jitter_buffer_t));
     if (jitter_buffer == NULL) {
         ESP_LOGE(TAG, "Jitter buffer create: malloc failed");

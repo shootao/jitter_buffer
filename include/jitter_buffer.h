@@ -16,40 +16,54 @@ extern "C" {
 
 typedef void *jitter_buffer_handle_t;
 
-/** 状态事件：在 config.event_loop 非 NULL 时，状态切换会 post 到该 loop */
+/** State events posted to config.event_loop when non-NULL */
 ESP_EVENT_DECLARE_BASE(JITTER_BUFFER_EVENTS);
 
 enum jitter_buffer_event_id {
-    JITTER_EVENT_BUFFERING = 0,  /**< 进入缓冲（蓄水）状态 */
-    JITTER_EVENT_UNDERRUN,       /**< 进入欠载状态 */
-    JITTER_EVENT_PLAYING,        /**< 进入播放状态 */
+    JITTER_EVENT_BUFFERING = 0,  /**< Enter buffering state */
+    JITTER_EVENT_UNDERRUN,       /**< Enter underrun state */
+    JITTER_EVENT_PLAYING,        /**< Enter playing state */
     JITTER_EVENT_MAX
 };
 
-#define DEFAULT_JITTER_BUFFER_CONFIG() {   \
-    .on_output_data = NULL,                \
-    .with_header = false,                  \
-    .buffer_size = 11 * 1024,              \
-    .frame_size = 512,                     \
-    .frame_interval = 20,                  \
-    .high_water = 20,                      \
-    .low_water = 10,                       \
-    .output_silence_on_empty = false,      \
-    .event_loop = NULL,                    \
+typedef enum {
+    AUDIO_FORMAT_ID_OPUS = 0,
+    AUDIO_FORMAT_ID_PCM,
+} audio_format_id_t;
+
+#define DEFAULT_JITTER_BUFFER_CONFIG() {     \
+    .on_output_data = NULL,                  \
+    .with_header = false,                    \
+    .buffer_size = 11 * 1024,                \
+    .frame_size = 512,                       \
+    .frame_interval = 20,                    \
+    .high_water = 20,                        \
+    .low_water = 10,                         \
+    .output_silence_on_empty = false,        \
+    .audio_format_id = AUDIO_FORMAT_ID_OPUS, \
+    .event_loop = NULL,                      \
 }
 
-/** 状态事件：handler 收到的 event_data 指向已拷贝的 jitter_buffer_handle_t，即 (*(jitter_buffer_handle_t *)event_data) 为对应 handle */
+/** State event: event_data is a pointer to a copied jitter_buffer_handle_t; use *(jitter_buffer_handle_t *)event_data to get the handle */
 
 typedef struct {
+    /* Callback */
     void (*on_output_data)(const uint8_t *data, size_t len);
-    bool                     with_header;              /**< true: 每帧长度不固定，由每次 write 的 len 决定，存储为 [2 字节大端长度][payload] */
-    size_t                   buffer_size;              /**< 环形缓冲大小（字节） */
-    uint32_t                 frame_size;               /**< 无头时为固定帧长；with_header 时为单帧 payload 最大长度（用于校验与输出缓冲） */
-    uint32_t                 frame_interval;           /**< 输出间隔（ms） */
-    uint32_t                 high_water;               /**< 达到此帧数开始播放 */
-    uint32_t                 low_water;                /**< 低于此帧数进入欠载 */
-    bool                     output_silence_on_empty;  /**< true: 无数据时输出静音包；false: 无数据时不调用 on_output_data */
-    esp_event_loop_handle_t  event_loop;               /**< 可选；非 NULL 时在 BUFFERING/UNDERRUN/PLAYING 切换时 post 事件 */
+
+    /* Buffer layout */
+    size_t                   buffer_size;   /**< Ring buffer size in bytes */
+    bool                     with_header;   /**< true: variable-length frames stored as [2-byte BE length][payload] */
+    uint32_t                 frame_size;    /**< Fixed frame size (no header) or max payload per frame (with_header) */
+    uint32_t                 frame_interval; /**< Output interval (ms). For OPUS+output_silence_on_empty: 20/40/60/120 only */
+    uint32_t                 high_water;    /**< Start playing when frame count reaches this */
+    uint32_t                 low_water;     /**< Enter underrun when frame count drops below this */
+
+    /* Audio format and silence */
+    audio_format_id_t        audio_format_id;       /**< AUDIO_FORMAT_ID_OPUS or AUDIO_FORMAT_ID_PCM */
+    bool                     output_silence_on_empty; /**< true: output silence when no data; false: skip on_output_data */
+
+    /* Optional event notification */
+    esp_event_loop_handle_t  event_loop;    /**< If non-NULL, post BUFFERING/UNDERRUN/PLAYING events */
 } jitter_buffer_config_t;
 
 /* Breif: Create a jitter buffer
@@ -113,5 +127,7 @@ esp_err_t jitter_buffer_reset(jitter_buffer_handle_t handle);
  *       - Others: Write failed
  */
 esp_err_t jitter_buffer_write(jitter_buffer_handle_t handle, const uint8_t *data, size_t len);
+
+#ifdef __cplusplus
 }
 #endif
